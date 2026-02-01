@@ -12,8 +12,15 @@ export interface Env {
   ACCOUNT_DATA: KVNamespace;
   ONE_TIME_KEYS: KVNamespace;
 
-  // R2 Bucket
-  MEDIA: R2Bucket;
+  // R2 Bucket (default storage)
+  MEDIA?: R2Bucket;
+
+  // S3-compatible storage (alternative to R2)
+  S3_ENDPOINT?: string;        // e.g., "https://s3.amazonaws.com" or "https://minio.example.com"
+  S3_REGION?: string;          // e.g., "us-east-1" (default: "auto")
+  S3_ACCESS_KEY_ID?: string;
+  S3_SECRET_ACCESS_KEY?: string;
+  S3_BUCKET?: string;          // Bucket name for media storage
 
   // Durable Objects
   ROOMS: DurableObjectNamespace;

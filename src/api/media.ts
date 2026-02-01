@@ -1,12 +1,18 @@
-// Matrix media endpoints (using R2 for storage)
+// Matrix media endpoints (using configurable storage backend)
 
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { Errors } from '../utils/errors';
 import { requireAuth } from '../middleware/auth';
 import { generateOpaqueId } from '../utils/ids';
+import { createStorageService, type StorageService } from '../services/storage';
 
 const app = new Hono<AppEnv>();
+
+// Helper to get storage service from context
+function getStorage(c: { env: AppEnv['Bindings'] }): StorageService {
+  return createStorageService(c.env);
+}
 
 // Maximum upload size (50MB)
 const MAX_UPLOAD_SIZE = 50 * 1024 * 1024;
@@ -51,11 +57,10 @@ app.post('/_matrix/media/v3/upload', requireAuth(), async (c) => {
   // Get the raw body
   const body = await c.req.arrayBuffer();
 
-  // Store in R2
-  await c.env.MEDIA.put(mediaId, body, {
-    httpMetadata: {
-      contentType,
-    },
+  // Store in storage backend
+  const storage = getStorage(c);
+  await storage.put(mediaId, body, {
+    contentType,
     customMetadata: {
       userId,
       filename: filename || '',
@@ -84,8 +89,9 @@ app.get('/_matrix/media/v3/download/:serverName/:mediaId', async (c) => {
     return Errors.notFound('Remote media not supported').toResponse();
   }
 
-  // Get from R2
-  const object = await c.env.MEDIA.get(mediaId);
+  // Get from storage
+  const storage = getStorage(c);
+  const object = await storage.get(mediaId);
   if (!object) {
     return Errors.notFound('Media not found').toResponse();
   }
@@ -116,8 +122,9 @@ app.get('/_matrix/media/v3/download/:serverName/:mediaId/:filename', async (c) =
     return Errors.notFound('Remote media not supported').toResponse();
   }
 
-  // Get from R2
-  const object = await c.env.MEDIA.get(mediaId);
+  // Get from storage
+  const storage = getStorage(c);
+  const object = await storage.get(mediaId);
   if (!object) {
     return Errors.notFound('Media not found').toResponse();
   }
@@ -161,8 +168,9 @@ app.get('/_matrix/media/v3/thumbnail/:serverName/:mediaId', async (c) => {
   const isImage = metadata.content_type.startsWith('image/');
 
   // Check if pre-generated thumbnail exists
+  const storage = getStorage(c);
   const thumbnailKey = `thumb_${mediaId}_${width}x${height}_${method}`;
-  const existingThumb = await c.env.MEDIA.get(thumbnailKey);
+  const existingThumb = await storage.get(thumbnailKey);
 
   if (existingThumb) {
     const headers = new Headers();
@@ -172,7 +180,7 @@ app.get('/_matrix/media/v3/thumbnail/:serverName/:mediaId', async (c) => {
   }
 
   // Get original
-  const object = await c.env.MEDIA.get(mediaId);
+  const object = await storage.get(mediaId);
   if (!object) {
     return Errors.notFound('Media not found').toResponse();
   }
@@ -393,8 +401,9 @@ app.post('/_matrix/client/v1/media/upload', requireAuth(), async (c) => {
 
   const body = await c.req.arrayBuffer();
 
-  await c.env.MEDIA.put(mediaId, body, {
-    httpMetadata: { contentType },
+  const storage = getStorage(c);
+  await storage.put(mediaId, body, {
+    contentType,
     customMetadata: {
       userId,
       filename: filename || '',
@@ -464,8 +473,9 @@ app.put('/_matrix/client/v1/media/upload/:serverName/:mediaId', requireAuth(), a
 
   const body = await c.req.arrayBuffer();
 
-  await c.env.MEDIA.put(mediaId, body, {
-    httpMetadata: { contentType },
+  const storage = getStorage(c);
+  await storage.put(mediaId, body, {
+    contentType,
     customMetadata: {
       userId,
       filename: filename || '',
@@ -489,7 +499,8 @@ app.get('/_matrix/client/v1/media/download/:serverName/:mediaId', requireAuth(),
     return Errors.notFound('Remote media not supported').toResponse();
   }
 
-  const object = await c.env.MEDIA.get(mediaId);
+  const storage = getStorage(c);
+  const object = await storage.get(mediaId);
   if (!object) {
     return Errors.notFound('Media not found').toResponse();
   }
@@ -518,7 +529,8 @@ app.get('/_matrix/client/v1/media/download/:serverName/:mediaId/:filename', requ
     return Errors.notFound('Remote media not supported').toResponse();
   }
 
-  const object = await c.env.MEDIA.get(mediaId);
+  const storage = getStorage(c);
+  const object = await storage.get(mediaId);
   if (!object) {
     return Errors.notFound('Media not found').toResponse();
   }
@@ -559,8 +571,9 @@ app.get('/_matrix/client/v1/media/thumbnail/:serverName/:mediaId', requireAuth()
   const isImage = metadata.content_type.startsWith('image/');
 
   // Check for pre-generated thumbnail
+  const storage = getStorage(c);
   const thumbnailKey = `thumb_${mediaId}_${width}x${height}_${method}`;
-  const existingThumb = await c.env.MEDIA.get(thumbnailKey);
+  const existingThumb = await storage.get(thumbnailKey);
 
   if (existingThumb) {
     const headers = new Headers();
@@ -569,7 +582,7 @@ app.get('/_matrix/client/v1/media/thumbnail/:serverName/:mediaId', requireAuth()
     return new Response(existingThumb.body, { headers });
   }
 
-  const object = await c.env.MEDIA.get(mediaId);
+  const object = await storage.get(mediaId);
   if (!object) {
     return Errors.notFound('Media not found').toResponse();
   }

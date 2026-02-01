@@ -10,6 +10,7 @@ import { generateLoginToken, generateOpaqueId } from '../utils/ids';
 import { hashToken } from '../utils/crypto';
 import { encryptSecret } from './oidc-auth';
 import { fetchOIDCDiscovery } from '../services/oidc';
+import { createStorageService } from '../services/storage';
 
 const app = new Hono<AppEnv>();
 
@@ -389,8 +390,9 @@ app.delete('/admin/api/media/:mediaId', requireAuth(), requireAdmin, async (c) =
   const mediaId = c.req.param('mediaId');
   const db = c.env.DB;
 
-  // Delete from R2
-  await c.env.MEDIA.delete(mediaId);
+  // Delete from storage
+  const storage = createStorageService(c.env);
+  await storage.delete(mediaId);
 
   // Delete thumbnails
   const thumbnails = await db.prepare(
@@ -398,7 +400,7 @@ app.delete('/admin/api/media/:mediaId', requireAuth(), requireAdmin, async (c) =
   ).bind(mediaId).all();
 
   for (const thumb of thumbnails.results as any[]) {
-    await c.env.MEDIA.delete(`thumb_${mediaId}_${thumb.width}x${thumb.height}_${thumb.method}`);
+    await storage.delete(`thumb_${mediaId}_${thumb.width}x${thumb.height}_${thumb.method}`);
   }
 
   // Delete from database
